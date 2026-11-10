@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Pendientes Express Care</title>
+<style>
+  :root{--navy:#1a1a2e;--azul:#1a56db;--gris:#64748b;--linea:#e2e8f0;--fondo:#f1f5f9;--ok:#166534}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);font-family:Arial,Helvetica,sans-serif;color:#1a1a2e;font-size:14px}
+  [hidden]{display:none!important}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 12px 40px}
+  .top{background:var(--navy);color:#fff;padding:14px 16px}
+  .top .in{max-width:1000px;margin:0 auto;display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+  .top h1{font-size:17px;margin:0}
+  .top small{color:#94a3b8;display:block;font-size:12px;margin-top:2px}
+  .btn{background:var(--azul);color:#fff;border:0;border-radius:8px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer}
+  .btn.sec{background:transparent;border:1px solid #475569;color:#e2e8f0;font-weight:400;padding:6px 12px;font-size:12px}
+  .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+  .tab{background:#fff;border:1px solid var(--linea);border-radius:20px;padding:8px 16px;cursor:pointer;font-size:13px;font-weight:700;color:var(--gris)}
+  .tab.on{background:var(--azul);border-color:var(--azul);color:#fff}
+  #login{max-width:420px;margin:80px auto;background:#fff;border-radius:12px;padding:32px 24px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+  #login h1{font-size:20px;margin:0 0 8px}
+  #login p{color:var(--gris);font-size:13px}
+  .msg{color:#b91c1c;font-size:13px;margin-top:14px}
+  .card{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:14px;overflow:hidden}
+  .card .pad{padding:16px}
+  details.sec{background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;overflow:hidden}
+  details.sec>summary{list-style:none;cursor:pointer;padding:14px 16px;font-weight:700;font-size:14px;display:flex;justify-content:space-between;gap:10px;align-items:center}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary::after{content:"▾";color:var(--gris);transition:transform .15s}
+  details.sec[open]>summary::after{transform:rotate(180deg)}
+  details.sec .cuerpo{padding:0 16px 16px}
+  .ayuda{font-size:12px;color:var(--gris);margin-bottom:10px}
+  .tw{overflow-x:auto}
+  .tw table{width:100%;min-width:720px;border-collapse:collapse;font-size:13px}
+  .tw td a{color:var(--azul)}
+  .plano{font-size:12px;color:var(--gris);text-align:center;padding:10px}
+  table.uso{width:100%;border-collapse:collapse;font-size:13px}
+  table.uso th,table.uso td{padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:left}
+  table.uso th{background:#f8fafc;color:var(--gris)}
+  .cab{background:#f8fafc}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>🔔 Pendientes Express Care</h1>
+  <p>Entra con tu cuenta de Google del negocio para ver las conversaciones pendientes.</p>
+  <button class="btn" id="btnEntrar">Entrar con Google</button>
+  <div class="msg" id="loginMsg"></div>
+</div>
+
+<div id="app" hidden>
+  <div class="top"><div class="in">
+    <div><h1 id="tituloReporte">Pendientes</h1><small id="subReporte"></small></div>
+    <div><span id="quien" style="font-size:12px;color:#94a3b8;margin-right:8px"></span><button class="btn sec" id="btnSalir">Salir</button></div>
+  </div></div>
+  <div class="wrap">
+    <div class="tabs" id="tabs"></div>
+    <div id="contenido"><div class="plano">Cargando…</div></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+import { getFirestore, collection, query, orderBy, limit, getDocs, addDoc, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+
+// ====== CONFIGURACIÓN (se llena con los datos de la app web de Firebase) ======
+const firebaseConfig = {
+  apiKey: "AIzaSyCCZgsK9xsGAcHHVRyJzJhDxkHpDfwzFtA",
+  authDomain: "express-care-conversaciones.firebaseapp.com",
+  projectId: "express-care-conversaciones",
+  storageBucket: "express-care-conversaciones.firebasestorage.app",
+  messagingSenderId: "644224554377",
+  appId: "1:644224554377:web:e0cae7e9dbefc15edd7d58"
+};
+const COL_REPORTE = 'pendientes_reporte_prueba';   // pendientes_reporte_prueba mientras se prueba; pendientes_reporte en producción
+const COL_USO = 'uso_pendientes_prueba';           // uso_pendientes_prueba mientras se prueba; uso_pendientes en producción
+const ADMIN = 'carlos.mtz@highprecisionsupply.com';
+const DOMINIO = '@expresscarecuu.com';
+const PERMITIDOS_EXTRA = [ADMIN];
+// ================================================================================
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = (id) => document.getElementById(id);
+let usuario = null, reportes = [], actual = null, esAdmin = false;
+let vistaUso = false;
+
+const permitido = (email) => !!email && (email.toLowerCase().endsWith(DOMINIO) || PERMITIDOS_EXTRA.indexOf(email.toLowerCase()) >= 0);
+
+// ---------- Registro de uso (quién abre, qué despliega, a quién le da clic en 💬) ----------
+const movil = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? 'celular' : 'compu';
+async function registrar(evento, extra) {
+  if (!usuario) return;
+  try {
+    await addDoc(collection(db, COL_USO), Object.assign({
+      email: usuario.email, nombre: usuario.displayName || '', evento: evento,
+      reporte: actual ? actual.id : '', ts: serverTimestamp(), equipo: movil
+    }, extra || {}));
+  } catch (e) { /* si falla el registro, la página sigue funcionando */ }
+}
+
+// ---------- Entrada ----------
+$('btnEntrar').addEventListener('click', async () => {
+  $('loginMsg').textContent = '';
+  const prov = new GoogleAuthProvider();
+  prov.setCustomParameters({ prompt: 'select_account' });
+  try { await signInWithPopup(auth, prov); }
+  catch (e) {
+    if (e && (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')) { try { await signInWithRedirect(auth, prov); } catch (e2) { $('loginMsg').textContent = 'No se pudo abrir el inicio de sesión.'; } }
+    else if (e && e.code !== 'auth/popup-closed-by-user') $('loginMsg').textContent = 'No se pudo entrar (' + (e.code || 'error') + ').';
+  }
+});
+$('btnSalir').addEventListener('click', () => signOut(auth));
+
+onAuthStateChanged(auth, async (u) => {
+  if (!u) { usuario = null; $('app').hidden = true; $('login').hidden = false; return; }
+  if (!permitido(u.email)) {
+    $('loginMsg').textContent = 'La cuenta ' + u.email + ' no tiene acceso. Entra con tu correo @expresscarecuu.com.';
+    await signOut(auth); return;
+  }
+  usuario = u; esAdmin = u.email.toLowerCase() === ADMIN;
+  $('login').hidden = true; $('app').hidden = false;
+  $('quien').textContent = u.email;
+  await cargar();
+});
+
+// ---------- Cargar reportes ----------
+async function cargar() {
+  $('contenido').innerHTML = '<div class="plano">Cargando…</div>';
+  try {
+    const snap = await getDocs(query(collection(db, COL_REPORTE), orderBy('creado', 'desc'), limit(8)));
+    reportes = snap.docs.map(d => d.data());
+  } catch (e) {
+    $('contenido').innerHTML = '<div class="plano">No se pudo leer el reporte (' + (e.code || 'error') + '). Si acabas de entrar por primera vez, avisa a Carlos.</div>';
+    return;
+  }
+  if (!reportes.length) { $('contenido').innerHTML = '<div class="plano">Todavía no hay reportes guardados.</div>'; return; }
+  const pedido = new URLSearchParams(location.search).get('r');
+  actual = (pedido && reportes.find(r => r.tipo === pedido)) || reportes[0];
+  await registrar('abrir', { tipoPedido: pedido || '' });
+  pintarTabs(); pintar();
+}
+
+function etiquetaTipo(t) { return t === 'am' ? '🔔 Mañana (9:02)' : '🕒 Tarde (6 pm)'; }
+function pintarTabs() {
+  const tipos = []; reportes.forEach(r => { if (tipos.indexOf(r.tipo) < 0) tipos.push(r.tipo); });
+  let h = '';
+  tipos.forEach(t => {
+    const r = reportes.find(x => x.tipo === t);
+    h += '<button class="tab' + (!vistaUso && actual && actual.tipo === t ? ' on' : '') + '" data-tipo="' + t + '">' + etiquetaTipo(t) + ' · ' + fmtFecha(r.fecha) + '</button>';
+  });
+  if (esAdmin) h += '<button class="tab' + (vistaUso ? ' on' : '') + '" data-uso="1">👥 Uso de la página</button>';
+  $('tabs').innerHTML = h;
+  $('tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', async () => {
+    if (b.dataset.uso) { vistaUso = true; pintarTabs(); await pintarUso(); return; }
+    vistaUso = false; actual = reportes.find(r => r.tipo === b.dataset.tipo); registrar('cambiar_reporte'); pintarTabs(); pintar();
+  }));
+}
+function fmtFecha(f) { const p = String(f || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : ''; }
+function fmtCreado(iso) {
+  try { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Chihuahua', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }); } catch (e) { return ''; }
+}
+
+// ---------- Pintar el reporte ----------
+const ABIERTAS = (id) => id === 'sec-fh' || id.indexOf('sec-sin') === 0 || id === 'sec-seg';
+function pintar() {
+  const r = actual; if (!r) return;
+  $('tituloReporte').textContent = r.titulo || 'Pendientes';
+  $('subReporte').textContent = 'Reporte del ' + fmtFecha(r.fecha) + ' · generado ' + fmtCreado(r.creado);
+  let secs = [];
+  try { secs = JSON.parse(r.datos || '[]'); } catch (e) {}
+  let h = '';
+  h += '<div class="card cab">' + (r.cabeceraHtml || '') + (r.edadesHtml || '') + '</div>';
+  secs.forEach(s => {
+    h += '<details class="sec" id="' + s.id + '"' + (ABIERTAS(s.id) ? ' open' : '') + '><summary><span>' + s.titulo + '</span></summary>' +
+      '<div class="cuerpo"><div class="ayuda">' + s.ayuda + '</div><div class="tw"><table>' + s.thead + '<tbody>' + s.rows.join('') + '</tbody></table></div></div></details>';
+  });
+  if (r.graficaHtml) h += '<details class="sec" id="grafica"><summary><span>📊 Cómo se va acumulando lo pendiente (por día)</span></summary><div class="cuerpo">' + r.graficaHtml + '</div></details>';
+  if (r.coberturaHtml) h += '<div class="plano">' + r.coberturaHtml + '</div>';
+  $('contenido').innerHTML = h;
+  // Los enlaces de WhatsApp se abren en otra pestaña para no perder la página.
+  $('contenido').querySelectorAll('a[href^="https://wa.me"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
+  // Se registra solo cuando la persona despliega una lista (clic en el título), no cuando la página las abre sola.
+  $('contenido').querySelectorAll('details.sec > summary').forEach(sm => sm.addEventListener('click', () => { const d = sm.parentElement; if (!d.open) registrar('seccion', { seccion: d.id }); }));
+  abrirAncla();
+}
+function abrirAncla() {
+  const id = decodeURIComponent((location.hash || '').slice(1));
+  if (!id) return;
+  const el = document.getElementById(id);
+  if (el && el.tagName === 'DETAILS') { el.open = true; setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+}
+window.addEventListener('hashchange', abrirAncla);
+
+// Clic en 💬 (WhatsApp): se registra la sección y el teléfono (solo lo puede leer Carlos).
+document.addEventListener('click', (ev) => {
+  const a = ev.target.closest && ev.target.closest('a[href^="https://wa.me"]');
+  if (!a) return;
+  const sec = a.closest('details.sec');
+  registrar('wa', { seccion: sec ? sec.id : '', tel: (a.getAttribute('href') || '').replace(/\D/g, '') });
+});
+
+// ---------- Vista de uso (solo Carlos) ----------
+async function pintarUso() {
+  $('tituloReporte').textContent = '👥 Uso de la página';
+  $('subReporte').textContent = 'Últimos 14 días · solo lo ves tú';
+  $('contenido').innerHTML = '<div class="plano">Cargando…</div>';
+  let filas = [];
+  try {
+    const desde = new Date(Date.now() - 14 * 86400000);
+    const snap = await getDocs(query(collection(db, COL_USO), where('ts', '>=', desde), orderBy('ts', 'desc'), limit(3000)));
+    filas = snap.docs.map(d => d.data());
+  } catch (e) { $('contenido').innerHTML = '<div class="plano">No se pudo leer el uso (' + (e.code || 'error') + ').</div>'; return; }
+  const dia = (ts) => ts && ts.toDate ? new Date(ts.toDate().getTime() - 6 * 3600000).toISOString().slice(0, 10) : '';
+  const m = {};
+  filas.forEach(f => {
+    const k = dia(f.ts) + '|' + f.email;
+    const x = m[k] = m[k] || { dia: dia(f.ts), email: f.email, aper: 0, secc: 0, wa: 0, ultima: null, equipo: f.equipo };
+    if (f.evento === 'abrir') x.aper++; else if (f.evento === 'seccion') x.secc++; else if (f.evento === 'wa') x.wa++;
+    const t = f.ts && f.ts.toDate ? f.ts.toDate() : null;
+    if (t && (!x.ultima || t > x.ultima)) x.ultima = t;
+  });
+  const lista = Object.values(m).sort((a, b) => (a.dia < b.dia ? 1 : -1) || (a.email < b.email ? -1 : 1));
+  let h = '<div class="card"><div class="pad"><div class="ayuda">Aperturas = veces que entró a la página · Secciones = listas que desplegó · 💬 = clics para abrir WhatsApp con un cliente. Un clic en 💬 no prueba que el cliente haya recibido respuesta; solo que el asesor fue a atenderlo.</div>';
+  h += '<table class="uso"><thead><tr><th>Día</th><th>Persona</th><th>Aperturas</th><th>Secciones</th><th>💬 clics</th><th>Última actividad</th></tr></thead><tbody>';
+  lista.forEach(x => {
+    const f = x.dia.split('-');
+    h += '<tr><td>' + (f.length === 3 ? f[2] + '/' + f[1] : '') + '</td><td>' + x.email.replace(/</g, '&lt;') + '</td><td>' + x.aper + '</td><td>' + x.secc + '</td><td>' + x.wa + '</td><td>' + (x.ultima ? x.ultima.toLocaleTimeString('es-MX', { timeZone: 'America/Chihuahua', hour: '2-digit', minute: '2-digit', hour12: true }) : '') + '</td></tr>';
+  });
+  if (!lista.length) h += '<tr><td colspan="6" style="color:#64748b">Todavía no hay uso registrado.</td></tr>';
+  h += '</tbody></table></div></div>';
+  $('contenido').innerHTML = h;
+}
+</script>
+</body>
+</html>
