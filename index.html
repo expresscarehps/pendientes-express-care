@@ -60,6 +60,15 @@
   table.uso th,table.uso td{padding:8px 10px;border-bottom:1px solid #f0f0f0;text-align:left}
   table.uso th{background:#f8f9fa;color:var(--val-dark-blue);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .cab{background:var(--white)}
+  .frm{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;align-items:center}
+  .frm input{padding:9px 11px;border:1.5px solid var(--val-light-gray);border-radius:6px;font-size:14px;font-family:inherit;width:100%}
+  .frm input:focus{outline:none;border-color:var(--val-dark-blue);box-shadow:0 0 0 2px rgba(0,51,153,.12)}
+  .frm .btn{width:auto;padding:10px 18px}
+  .mini{border:1.5px solid var(--val-dark-blue);background:var(--white);color:var(--val-dark-blue);border-radius:6px;padding:5px 10px;font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+  .mini:hover{background:var(--val-dark-blue);color:var(--white)}
+  .mini.peligro{border-color:var(--val-red);color:var(--val-red)}
+  .mini.peligro:hover{background:var(--val-red);color:var(--white)}
+  @media(max-width:600px){.frm{grid-template-columns:1fr}.frm .btn{width:100%}}
   /* colores que vienen escritos dentro del reporte (azul genérico -> azul Valvoline) */
   [style*="#1a56db"]{color:var(--val-dark-blue)!important}
   [style*="background:#1a56db"]{background:var(--val-dark-blue)!important;color:#fff!important}
@@ -96,7 +105,7 @@
 <script type="module">
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
-import { getFirestore, collection, query, orderBy, limit, getDocs, addDoc, where, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
+import { getFirestore, collection, query, orderBy, limit, getDocs, addDoc, where, serverTimestamp, doc, getDoc, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js';
 
 // ====== CONFIGURACIÓN (se llena con los datos de la app web de Firebase) ======
 const firebaseConfig = {
@@ -110,8 +119,7 @@ const firebaseConfig = {
 const COL_REPORTE = 'pendientes_reporte_prueba';   // pendientes_reporte_prueba mientras se prueba; pendientes_reporte en producción
 const COL_USO = 'uso_pendientes_prueba';           // uso_pendientes_prueba mientras se prueba; uso_pendientes en producción
 const ADMIN = 'carlos.mtz@highprecisionsupply.com';
-const DOMINIO = '@expresscarecuu.com';
-const PERMITIDOS_EXTRA = [ADMIN];
+const COL_USUARIOS = 'usuarios_pendientes';        // lista de personas autorizadas (solo Carlos la administra)
 // ================================================================================
 
 const app = initializeApp(firebaseConfig);
@@ -119,9 +127,17 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = (id) => document.getElementById(id);
 let usuario = null, reportes = [], actual = null, esAdmin = false;
-let vistaUso = false;
+let vistaUso = false, vistaUsr = false;
 
-const permitido = (email) => !!email && (email.toLowerCase().endsWith(DOMINIO) || PERMITIDOS_EXTRA.indexOf(email.toLowerCase()) >= 0);
+const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+// Acceso: Carlos siempre; los demás solo si su correo está en la lista y está activo.
+async function tieneAcceso(u) {
+  const mail = String(u.email || '').toLowerCase();
+  if (mail === ADMIN) return true;
+  if (!u.emailVerified) return false;
+  try { const sn = await getDoc(doc(db, COL_USUARIOS, mail)); return sn.exists() && sn.data().activo === true; }
+  catch (e) { return false; }
+}
 
 // ---------- Registro de uso (quién abre, qué despliega, a quién le da clic en 💬) ----------
 const movil = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) ? 'celular' : 'compu';
@@ -150,8 +166,8 @@ $('btnSalir').addEventListener('click', () => signOut(auth));
 
 onAuthStateChanged(auth, async (u) => {
   if (!u) { usuario = null; $('app').hidden = true; $('login').hidden = false; return; }
-  if (!permitido(u.email)) {
-    $('loginMsg').textContent = 'La cuenta ' + u.email + ' no tiene acceso. Entra con tu correo @expresscarecuu.com.';
+  if (!(await tieneAcceso(u))) {
+    $('loginMsg').textContent = 'La cuenta ' + u.email + ' no está dada de alta en esta página. Pídele a Carlos que te agregue.';
     await signOut(auth); return;
   }
   usuario = u; esAdmin = u.email.toLowerCase() === ADMIN;
@@ -168,9 +184,9 @@ async function cargar() {
     reportes = snap.docs.map(d => d.data());
   } catch (e) {
     $('contenido').innerHTML = '<div class="plano">No se pudo leer el reporte (' + (e.code || 'error') + '). Si acabas de entrar por primera vez, avisa a Carlos.</div>';
-    return;
+    pintarTabs(); return;
   }
-  if (!reportes.length) { $('contenido').innerHTML = '<div class="plano">Todavía no hay reportes guardados.</div>'; return; }
+  if (!reportes.length) { $('contenido').innerHTML = '<div class="plano">Todavía no hay reportes guardados.</div>'; pintarTabs(); return; }
   const pedido = new URLSearchParams(location.search).get('r');
   actual = (pedido && reportes.find(r => r.tipo === pedido)) || reportes[0];
   await registrar('abrir', { tipoPedido: pedido || '' });
@@ -183,13 +199,15 @@ function pintarTabs() {
   let h = '';
   tipos.forEach(t => {
     const r = reportes.find(x => x.tipo === t);
-    h += '<button class="tab' + (!vistaUso && actual && actual.tipo === t ? ' on' : '') + '" data-tipo="' + t + '">' + etiquetaTipo(t) + ' · ' + fmtFecha(r.fecha) + '</button>';
+    h += '<button class="tab' + (!vistaUso && !vistaUsr && actual && actual.tipo === t ? ' on' : '') + '" data-tipo="' + t + '">' + etiquetaTipo(t) + ' · ' + fmtFecha(r.fecha) + '</button>';
   });
-  if (esAdmin) h += '<button class="tab' + (vistaUso ? ' on' : '') + '" data-uso="1">👥 Uso de la página</button>';
+  if (esAdmin) h += '<button class="tab' + (vistaUso ? ' on' : '') + '" data-uso="1">📈 Uso de la página</button>';
+  if (esAdmin) h += '<button class="tab' + (vistaUsr ? ' on' : '') + '" data-usr="1">👥 Usuarios</button>';
   $('tabs').innerHTML = h;
   $('tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', async () => {
-    if (b.dataset.uso) { vistaUso = true; pintarTabs(); await pintarUso(); return; }
-    vistaUso = false; actual = reportes.find(r => r.tipo === b.dataset.tipo); registrar('cambiar_reporte'); pintarTabs(); pintar();
+    if (b.dataset.uso) { vistaUso = true; vistaUsr = false; pintarTabs(); await pintarUso(); return; }
+    if (b.dataset.usr) { vistaUsr = true; vistaUso = false; pintarTabs(); await pintarUsuarios(''); return; }
+    vistaUso = false; vistaUsr = false; actual = reportes.find(r => r.tipo === b.dataset.tipo); registrar('cambiar_reporte'); pintarTabs(); pintar();
   }));
 }
 function fmtFecha(f) { const p = String(f || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : ''; }
@@ -238,7 +256,7 @@ document.addEventListener('click', (ev) => {
 
 // ---------- Vista de uso (solo Carlos) ----------
 async function pintarUso() {
-  $('tituloReporte').textContent = '👥 Uso de la página';
+  $('tituloReporte').textContent = '📈 Uso de la página';
   $('subReporte').textContent = 'Últimos 14 días · solo lo ves tú';
   $('contenido').innerHTML = '<div class="plano">Cargando…</div>';
   let filas = [];
@@ -266,6 +284,48 @@ async function pintarUso() {
   if (!lista.length) h += '<tr><td colspan="6" style="color:#64748b">Todavía no hay uso registrado.</td></tr>';
   h += '</tbody></table></div></div>';
   $('contenido').innerHTML = h;
+}
+
+// ---------- Usuarios (solo Carlos): quién puede entrar a la página ----------
+async function pintarUsuarios(aviso) {
+  $('tituloReporte').textContent = '👥 Usuarios';
+  $('subReporte').textContent = 'Quién puede entrar a la página · solo lo ves tú';
+  $('contenido').innerHTML = '<div class="plano">Cargando…</div>';
+  let lista = [];
+  try {
+    const snap = await getDocs(collection(db, COL_USUARIOS));
+    lista = snap.docs.map(d => Object.assign({ _id: d.id }, d.data()));
+  } catch (e) { $('contenido').innerHTML = '<div class="plano">No se pudo leer la lista (' + esc(e.code || 'error') + ').</div>'; return; }
+  lista.sort((a, b) => String(a.nombre || a._id).localeCompare(String(b.nombre || b._id)));
+  let h = '<div class="card"><div class="pad"><b>Agregar a una persona</b><div class="ayuda">Escribe el correo con el que entra a Google (el de la empresa). Desde ese momento puede abrir la página.</div>' +
+    '<div class="frm"><input id="usrNombre" type="text" placeholder="Nombre (ej. Xenia)" autocomplete="off"><input id="usrCorreo" type="email" placeholder="correo@expresscarecuu.com" autocomplete="off"><button class="btn" id="usrAgregar" type="button">Agregar</button></div>' +
+    '<div class="msg" id="usrMsg" style="color:#166534">' + esc(aviso || '') + '</div></div></div>';
+  h += '<div class="card"><div class="pad"><table class="uso"><thead><tr><th>Nombre</th><th>Correo</th><th>Estado</th><th></th></tr></thead><tbody>';
+  lista.forEach(u => {
+    const act = u.activo === true;
+    h += '<tr><td>' + esc(u.nombre || '') + '</td><td>' + esc(u.correo || u._id) + '</td><td>' + (act ? '<b style="color:#166534">Activo</b>' : '<span style="color:#8B8D8D">Desactivado</span>') + '</td>' +
+      '<td style="white-space:nowrap"><button class="mini" data-acc="alt" data-id="' + esc(u._id) + '" data-act="' + (act ? '1' : '0') + '">' + (act ? 'Desactivar' : 'Activar') + '</button> <button class="mini peligro" data-acc="del" data-id="' + esc(u._id) + '">Quitar</button></td></tr>';
+  });
+  if (!lista.length) h += '<tr><td colspan="4" style="color:#8B8D8D">Todavía no hay personas en la lista. Solo tú puedes entrar.</td></tr>';
+  h += '</tbody></table><div class="ayuda" style="margin-top:10px">Tu cuenta (' + esc(ADMIN) + ') siempre tiene acceso y no necesita estar en la lista. Quien no esté aquí, o esté desactivado, no puede ver nada.</div></div></div>';
+  $('contenido').innerHTML = h;
+  $('usrAgregar').addEventListener('click', async () => {
+    const correo = $('usrCorreo').value.trim().toLowerCase(), nombre = $('usrNombre').value.trim();
+    const m = $('usrMsg'); m.style.color = '#c62828';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) { m.textContent = 'Escribe un correo válido.'; return; }
+    if (!nombre) { m.textContent = 'Escribe el nombre de la persona.'; return; }
+    try { await setDoc(doc(db, COL_USUARIOS, correo), { correo: correo, nombre: nombre, activo: true, creado: serverTimestamp(), por: usuario.email }, { merge: true }); }
+    catch (e) { m.textContent = 'No se pudo guardar (' + (e.code || 'error') + ').'; return; }
+    await pintarUsuarios('Listo: ' + nombre + ' ya puede entrar.');
+  });
+  $('contenido').querySelectorAll('button[data-acc]').forEach(b => b.addEventListener('click', async () => {
+    const id = b.dataset.id;
+    try {
+      if (b.dataset.acc === 'alt') await updateDoc(doc(db, COL_USUARIOS, id), { activo: b.dataset.act !== '1' });
+      else { if (!confirm('¿Quitar a ' + id + ' de la lista? Ya no podrá entrar.')) return; await deleteDoc(doc(db, COL_USUARIOS, id)); }
+    } catch (e) { $('usrMsg').style.color = '#c62828'; $('usrMsg').textContent = 'No se pudo cambiar (' + (e.code || 'error') + ').'; return; }
+    await pintarUsuarios('Listo.');
+  }));
 }
 </script>
 </body>
