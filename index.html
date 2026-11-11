@@ -434,6 +434,13 @@ function activarAclarar() {
 }
 function pintarAclaradas() {
   const lista = Object.keys(filasAcl).map(id => ({ info: filasAcl[id], v: aclaracionVigente(id, filasAcl[id].f) })).filter(x => x.v && !x.v.volvio);
+  // Las aclaradas desde antes del reporte ya no vienen en él: se leen directo de las aclaraciones (últimos 5 días).
+  Object.keys(aclar).forEach(id => {
+    const a = aclar[id];
+    if (filasAcl[id] || !a || a.activa === false) return;
+    const ms = Date.parse(a.tsIso || ''); if (isNaN(ms) || Date.now() - ms > 5 * 86400000) return;
+    lista.push({ info: { id: id, nombre: a.nombre || '', tel: a.telefono || '', sec: a.seccion || '', f: '' }, v: { a: a, volvio: false } });
+  });
   if (!lista.length) return;
   lista.sort((x, y) => String(y.v.a.tsIso || '') < String(x.v.a.tsIso || '') ? -1 : 1);
   let filas = '';
@@ -448,14 +455,14 @@ function pintarAclaradas() {
   });
   const sec = document.createElement('details');
   sec.className = 'sec'; sec.id = 'sec-aclaradas';
-  sec.innerHTML = '<summary><span>✔ Aclaradas (' + lista.length + ')</span></summary><div class="cuerpo"><div class="ayuda">Conversaciones que un asesor marcó como resueltas. Ya no cuentan en las listas de arriba. Si el cliente vuelve a escribir, reaparecen solas. Si fue sin querer, toca «Deshacer».</div><div class="tw"><table style="min-width:560px"><thead><tr><th style="padding:8px 14px;text-align:left">Cliente</th><th style="padding:8px 14px;text-align:left">Motivo</th><th style="padding:8px 14px;text-align:left">Quién y cuándo</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div></div>';
+  sec.innerHTML = '<summary><span>✔ Aclaradas (' + lista.length + ')</span></summary><div class="cuerpo"><div class="ayuda">Conversaciones que un asesor marcó como resueltas. Ya no cuentan en las listas ni en el correo. Si el cliente vuelve a escribir, reaparecen solas. Si fue sin querer, toca «Deshacer» (volverá a salir en el siguiente reporte).</div><div class="tw"><table style="min-width:560px"><thead><tr><th style="padding:8px 14px;text-align:left">Cliente</th><th style="padding:8px 14px;text-align:left">Motivo</th><th style="padding:8px 14px;text-align:left">Quién y cuándo</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div></div>';
   const cont = $('contenido');
   const pend = Array.from(cont.querySelectorAll('details.sec')).filter(d => SEC_ACL(d.id));
   const ancla = pend.length ? pend[pend.length - 1] : cont.querySelector('.cab');
   if (ancla) ancla.insertAdjacentElement('afterend', sec); else cont.appendChild(sec);
   sec.querySelectorAll('button[data-deshacer]').forEach(b => b.addEventListener('click', async () => {
     const id = b.dataset.deshacer;
-    try { await deleteDoc(doc(db, COL_ACL, id)); delete aclar[id]; registrar('deshacer_aclarar', {}); repintar(); }
+    try { const estabaEnReporte = !!filasAcl[id]; await deleteDoc(doc(db, COL_ACL, id)); delete aclar[id]; registrar('deshacer_aclarar', {}); repintar(); if (!estabaEnReporte) aviso('Listo. Volverá a salir en el siguiente reporte.'); }
     catch (e) { aviso('No se pudo deshacer (' + (e.code || 'error') + ').'); }
   }));
 }
