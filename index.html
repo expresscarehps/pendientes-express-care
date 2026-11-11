@@ -86,6 +86,34 @@
   [style*="#1a56db"]{color:var(--val-dark-blue)!important}
   [style*="background:#1a56db"]{background:var(--val-dark-blue)!important;color:#fff!important}
   [style*="#b91c1c"]{color:#c62828!important}
+
+  /* Aclarar: botón ⋯ por renglón, menú y sección de aclaradas */
+  .acl-td{width:44px;text-align:right;vertical-align:top;padding:10px 6px!important;white-space:nowrap}
+  .acl-btn{width:32px;height:32px;border:1px solid var(--val-light-gray);background:var(--white);border-radius:6px;color:var(--val-dark-gray);font-size:19px;line-height:24px;cursor:pointer;font-family:inherit;padding:0}
+  .acl-btn:hover,.acl-btn:focus-visible{border-color:var(--val-dark-blue);color:var(--val-dark-blue);outline:none}
+  .acl-vuelve{margin-top:3px;font-size:11px;font-weight:600;color:#b45309}
+  #aclVelo{position:fixed;inset:0;z-index:190;background:rgba(0,0,0,.0)}
+  #aclMenu{position:fixed;z-index:200;background:var(--white);border:1px solid #e2e8f0;border-radius:10px;box-shadow:0 6px 24px rgba(0,0,0,.28);width:320px;max-width:calc(100vw - 16px);overflow:hidden}
+  #aclMenu .t{font-size:12px;color:var(--val-dark-gray);padding:9px 13px;background:#f8fafc;border-bottom:1px solid #eee}
+  #aclMenu .t b{color:var(--text);font-size:13px}
+  #aclMenu .o{padding:11px 13px;font-size:14px;border-bottom:1px solid #f1f5f9;cursor:pointer}
+  #aclMenu .o:hover,#aclMenu .o:focus-visible{background:#eef2ff;outline:none}
+  #aclMenu .o small{display:block;color:#94a3b8;font-size:11px;margin-top:1px}
+  #aclMenu .o.cancelar{color:var(--val-dark-gray);text-align:center;border-bottom:0}
+  #aclMenu .cm{padding:12px 13px}
+  #aclMenu .cm input{width:100%;padding:10px 11px;border:1.5px solid var(--val-light-gray);border-radius:6px;font-size:15px;font-family:inherit}
+  #aclMenu .cm .btn{margin-top:8px}
+  #aclMenu .cm .err{color:var(--val-red);font-size:12px;min-height:16px;margin-top:4px}
+  #aclAviso{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:210;background:#1a1a1a;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;max-width:92vw;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .acl-tag{display:inline-block;background:#ecfdf5;color:#065f46;border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600}
+  @media(max-width:600px){
+    #aclVelo{background:rgba(0,0,0,.35)}
+    #aclMenu{left:0!important;right:0!important;top:auto!important;bottom:0!important;width:100%;max-width:100%;border-radius:14px 14px 0 0}
+    #aclMenu .o{padding:16px;font-size:16px}
+    #aclMenu .t{font-size:13px;padding:12px 16px}
+    .acl-btn{width:40px;height:40px}
+    #aclAviso{bottom:auto;top:12px}
+  }
 </style>
 </head>
 <body>
@@ -143,7 +171,7 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const $ = (id) => document.getElementById(id);
 let usuario = null, reportes = [], actual = null, esAdmin = false;
-let vistaUso = false, vistaUsr = false;
+let vistaUso = false, vistaUsr = false, vistaProv = false;
 
 const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // Acceso: Carlos siempre; los demás solo si su correo está en la lista y está activo.
@@ -203,6 +231,7 @@ async function cargar() {
     pintarTabs(); return;
   }
   if (!reportes.length) { $('contenido').innerHTML = '<div class="plano">Todavía no hay reportes guardados.</div>'; pintarTabs(); return; }
+  await cargarAclaraciones();
   const pedido = new URLSearchParams(location.search).get('r');
   actual = (pedido && reportes.find(r => r.tipo === pedido)) || reportes[0];
   await registrar('abrir', { tipoPedido: pedido || '' });
@@ -215,15 +244,17 @@ function pintarTabs() {
   let h = '';
   tipos.forEach(t => {
     const r = reportes.find(x => x.tipo === t);
-    h += '<button class="tab' + (!vistaUso && !vistaUsr && actual && actual.tipo === t ? ' on' : '') + '" data-tipo="' + t + '">' + etiquetaTipo(t) + ' · ' + fmtFecha(r.fecha) + '</button>';
+    h += '<button class="tab' + (!vistaUso && !vistaUsr && !vistaProv && actual && actual.tipo === t ? ' on' : '') + '" data-tipo="' + t + '">' + etiquetaTipo(t) + ' · ' + fmtFecha(r.fecha) + '</button>';
   });
   if (esAdmin) h += '<button class="tab' + (vistaUso ? ' on' : '') + '" data-uso="1">📈 Uso de la página</button>';
   if (esAdmin) h += '<button class="tab' + (vistaUsr ? ' on' : '') + '" data-usr="1">👥 Usuarios</button>';
+  if (esAdmin) h += '<button class="tab' + (vistaProv ? ' on' : '') + '" data-prov="1">🚫 Proveedores</button>';
   $('tabs').innerHTML = h;
   $('tabs').querySelectorAll('.tab').forEach(b => b.addEventListener('click', async () => {
-    if (b.dataset.uso) { vistaUso = true; vistaUsr = false; pintarTabs(); await pintarUso(); return; }
-    if (b.dataset.usr) { vistaUsr = true; vistaUso = false; pintarTabs(); await pintarUsuarios(''); return; }
-    vistaUso = false; vistaUsr = false; actual = reportes.find(r => r.tipo === b.dataset.tipo); registrar('cambiar_reporte'); pintarTabs(); pintar();
+    if (b.dataset.uso) { vistaUso = true; vistaUsr = false; vistaProv = false; pintarTabs(); await pintarUso(); return; }
+    if (b.dataset.usr) { vistaUsr = true; vistaUso = false; vistaProv = false; pintarTabs(); await pintarUsuarios(''); return; }
+    if (b.dataset.prov) { vistaProv = true; vistaUso = false; vistaUsr = false; pintarTabs(); await pintarProveedores(); return; }
+    vistaUso = false; vistaUsr = false; vistaProv = false; actual = reportes.find(r => r.tipo === b.dataset.tipo); registrar('cambiar_reporte'); pintarTabs(); pintar();
   }));
 }
 function fmtFecha(f) { const p = String(f || '').split('-'); return p.length === 3 ? p[2] + '/' + p[1] : ''; }
@@ -233,7 +264,7 @@ function fmtCreado(iso) {
 
 // ---------- Pintar el reporte ----------
 const ABIERTAS = (id) => id === 'sec-fh' || id.indexOf('sec-sin') === 0 || id === 'sec-seg';
-function pintar() {
+function pintar(quieto) {
   const r = actual; if (!r) return;
   $('tituloReporte').textContent = r.titulo || 'Pendientes';
   $('subReporte').textContent = 'Reporte del ' + fmtFecha(r.fecha) + ' · generado ' + fmtCreado(r.creado);
@@ -252,9 +283,10 @@ function pintar() {
   $('contenido').querySelectorAll('a[href^="https://wa.me"]').forEach(a => { a.target = '_blank'; a.rel = 'noopener'; });
   // Se registra solo cuando la persona despliega una lista (clic en el título), no cuando la página las abre sola.
   $('contenido').querySelectorAll('details.sec > summary').forEach(sm => sm.addEventListener('click', () => { const d = sm.parentElement; if (!d.open) registrar('seccion', { seccion: d.id }); }));
+  activarAclarar();
   activarTarjetas();
   ajustarAlturas();
-  abrirAncla();
+  if (!quieto) abrirAncla();
 }
 function ajustarAlturas() {
   const h = document.querySelector('#app .hdr');
@@ -313,6 +345,190 @@ document.addEventListener('click', (ev) => {
   const sec = a.closest('details.sec');
   registrar('wa', { seccion: sec ? sec.id : '', tel: (a.getAttribute('href') || '').replace(/\D/g, '') });
 });
+
+// ---------- Aclarar: el asesor marca una conversación como resuelta (llamada, otro medio, proveedor...) ----------
+const COL_ACL = COL_REPORTE.indexOf('_prueba') > 0 ? 'aclaraciones_prueba' : 'aclaraciones';
+const MOTIVOS = {
+  llamada: ['📞', 'Ya la atendí por llamada o en persona'],
+  otro_medio: ['✉️', 'Ya se envió por otro medio'],
+  proveedor: ['🚫', 'Proveedor / no es cliente'],
+  espera_cliente: ['⏳', 'Estoy esperando respuesta del cliente'],
+  atendiendo: ['🔧', 'Lo estoy atendiendo ahora']
+};
+let aclar = {}, aclOK = false, filasAcl = {};
+const SEC_ACL = (id) => id === 'sec-fh' || id.indexOf('sec-sin') === 0 || id === 'sec-seg';
+async function cargarAclaraciones() {
+  try {
+    const sn = await getDocs(collection(db, COL_ACL));
+    const m = {}; sn.docs.forEach(d => { m[d.id] = d.data(); });
+    aclar = m; aclOK = true;
+  } catch (e) { aclar = {}; aclOK = false; }   // si todavía no están las reglas, la página funciona igual, sin el botón
+}
+// Una aclaración vale mientras el cliente no haya escrito después de ella.
+function aclaracionVigente(id, ref) {
+  const a = aclar[id];
+  if (!a || a.activa === false) return null;
+  const r = Date.parse(ref || ''), f = Date.parse(a.fechaMsg || '');
+  return { a: a, volvio: (!isNaN(r) && !isNaN(f) && r > f + 1000) };
+}
+function aviso(txt) {
+  const p = $('aclAviso'); if (p) p.remove();
+  const d = document.createElement('div'); d.id = 'aclAviso'; d.textContent = txt; document.body.appendChild(d);
+  setTimeout(() => { d.remove(); }, 5000);
+}
+function horaCorta(iso) {
+  try { return new Date(iso).toLocaleString('es-MX', { timeZone: 'America/Chihuahua', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: true }); } catch (e) { return ''; }
+}
+const quien = (a) => a.porNombre || String(a.por || '').split('@')[0];
+// Las cifras de los recuadros de arriba bajan cuando una conversación se aclara.
+function bajarCaja(rxs, n) {
+  const cab = document.querySelector('#contenido .cab'); if (!cab || !n) return;
+  cab.querySelectorAll('div').forEach(card => {
+    if (card.children.length !== 2) return;
+    const num = card.children[0], lab = card.children[1];
+    if (num.children.length || lab.children.length || !/^\d+$/.test(num.textContent.trim())) return;
+    if (rxs.some(rx => rx.test(lab.textContent))) num.textContent = String(Math.max(0, parseInt(num.textContent, 10) - n));
+  });
+}
+function rxCajas(secId) {
+  if (secId === 'sec-fh') return [/Fuera de horario/i];
+  if (secId === 'sec-seg') return [/Seguimiento/i];
+  if (secId === 'sec-sin-hoy') return [/Nuevas de hoy/i];
+  return [/Siguen de días anteriores/i, /Sin atender en horario/i];
+}
+function activarAclarar() {
+  filasAcl = {};
+  const prev = document.getElementById('sec-aclaradas'); if (prev) prev.remove();
+  if (!aclOK) return;
+  $('contenido').querySelectorAll('details.sec').forEach(d => {
+    if (!SEC_ACL(d.id)) return;
+    const tabla = d.querySelector('table'); if (!tabla) return;
+    const hr = tabla.querySelector('thead tr'); if (hr) hr.insertAdjacentHTML('beforeend', '<th></th>');
+    let quitadas = 0;
+    tabla.querySelectorAll('tbody tr').forEach(tr => {
+      const id = tr.dataset.id;
+      if (!id) { tr.insertAdjacentHTML('beforeend', '<td class="acl-td"></td>'); return; }
+      const ref = tr.dataset.r || tr.dataset.f || '';
+      filasAcl[id] = { id: id, nombre: tr.dataset.n || '', tel: tr.dataset.t || '', sec: d.id, f: ref };
+      const v = aclaracionVigente(id, ref);
+      if (v && !v.volvio) { tr.remove(); quitadas++; return; }
+      if (v && v.volvio) { const c0 = tr.querySelector('td'); if (c0) c0.insertAdjacentHTML('beforeend', '<div class="acl-vuelve">↩ Volvió a escribir (antes la habían aclarado)</div>'); }
+      tr.insertAdjacentHTML('beforeend', '<td class="acl-td"><button class="acl-btn" type="button" title="Aclarar esta conversación" aria-label="Aclarar esta conversación">⋯</button></td>');
+      tr.querySelector('.acl-btn').addEventListener('click', (ev) => { ev.stopPropagation(); abrirMenu(ev.currentTarget, id); });
+    });
+    if (quitadas) {
+      bajarCaja(rxCajas(d.id), quitadas);
+      if (!tabla.querySelector('tbody tr')) { d.remove(); return; }
+      const sp = d.querySelector('summary > span');
+      if (sp) sp.innerHTML = sp.innerHTML.replace(/\((\d+)\)(?!.*\(\d+\))/, (mm, x) => '(' + Math.max(0, parseInt(x, 10) - quitadas) + ')');
+    }
+  });
+  pintarAclaradas();
+}
+function pintarAclaradas() {
+  const lista = Object.keys(filasAcl).map(id => ({ info: filasAcl[id], v: aclaracionVigente(id, filasAcl[id].f) })).filter(x => x.v && !x.v.volvio);
+  if (!lista.length) return;
+  lista.sort((x, y) => String(y.v.a.tsIso || '') < String(x.v.a.tsIso || '') ? -1 : 1);
+  let filas = '';
+  lista.forEach(x => {
+    const a = x.v.a, mo = MOTIVOS[a.motivo] || ['✔', a.motivo || 'Aclarada'];
+    const tel = String(x.info.tel || '').replace(/\D/g, '');
+    const nom = tel.length >= 10 ? '<a href="https://wa.me/' + (tel.length === 10 ? '52' + tel : (tel.indexOf('521') === 0 && tel.length === 13 ? '52' + tel.slice(3) : tel)) + '" target="_blank" rel="noopener" style="font-weight:600">' + esc(x.info.nombre) + ' 💬</a>' : '<b>' + esc(x.info.nombre) + '</b>';
+    filas += '<tr><td style="padding:10px 14px;border-bottom:1px solid #f0f0f0">' + nom + '<br><span style="color:#64748b;font-size:12px">' + esc(x.info.tel) + '</span></td>' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #f0f0f0"><span class="acl-tag">' + mo[0] + ' ' + esc(mo[1]) + '</span>' + (a.comentario ? '<div style="font-size:12px;color:#475569;margin-top:4px">«' + esc(a.comentario) + '»</div>' : '') + '</td>' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;font-size:12px;color:#475569">' + esc(quien(a)) + '<br>' + esc(horaCorta(a.tsIso)) + '</td>' +
+      '<td style="padding:10px 14px;border-bottom:1px solid #f0f0f0;text-align:right"><button class="mini" type="button" data-deshacer="' + esc(x.info.id) + '">Deshacer</button></td></tr>';
+  });
+  const sec = document.createElement('details');
+  sec.className = 'sec'; sec.id = 'sec-aclaradas';
+  sec.innerHTML = '<summary><span>✔ Aclaradas (' + lista.length + ')</span></summary><div class="cuerpo"><div class="ayuda">Conversaciones que un asesor marcó como resueltas. Ya no cuentan en las listas de arriba. Si el cliente vuelve a escribir, reaparecen solas. Si fue sin querer, toca «Deshacer».</div><div class="tw"><table style="min-width:560px"><thead><tr><th style="padding:8px 14px;text-align:left">Cliente</th><th style="padding:8px 14px;text-align:left">Motivo</th><th style="padding:8px 14px;text-align:left">Quién y cuándo</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div></div>';
+  const cont = $('contenido');
+  const pend = Array.from(cont.querySelectorAll('details.sec')).filter(d => SEC_ACL(d.id));
+  const ancla = pend.length ? pend[pend.length - 1] : cont.querySelector('.cab');
+  if (ancla) ancla.insertAdjacentElement('afterend', sec); else cont.appendChild(sec);
+  sec.querySelectorAll('button[data-deshacer]').forEach(b => b.addEventListener('click', async () => {
+    const id = b.dataset.deshacer;
+    try { await deleteDoc(doc(db, COL_ACL, id)); delete aclar[id]; registrar('deshacer_aclarar', {}); repintar(); }
+    catch (e) { aviso('No se pudo deshacer (' + (e.code || 'error') + ').'); }
+  }));
+}
+function repintar() {
+  const y = window.scrollY, abiertas = {};
+  $('contenido').querySelectorAll('details.sec').forEach(d => { abiertas[d.id] = d.open; });
+  pintar(true);
+  $('contenido').querySelectorAll('details.sec').forEach(d => { if (Object.prototype.hasOwnProperty.call(abiertas, d.id)) d.open = abiertas[d.id]; });
+  window.scrollTo(0, y);
+}
+function cerrarMenu() { const m = $('aclMenu'); if (m) m.remove(); const v = $('aclVelo'); if (v) v.remove(); }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMenu(); });
+function abrirMenu(btn, id) {
+  cerrarMenu();
+  const info = filasAcl[id]; if (!info) return;
+  const velo = document.createElement('div'); velo.id = 'aclVelo'; velo.addEventListener('click', cerrarMenu); document.body.appendChild(velo);
+  const m = document.createElement('div'); m.id = 'aclMenu'; m.setAttribute('role', 'dialog');
+  m.innerHTML = '<div class="t">¿Qué pasó con esta conversación?<br><b>' + esc(info.nombre) + '</b> · ' + esc(info.tel) + '</div>' +
+    Object.keys(MOTIVOS).map(k => '<div class="o" tabindex="0" data-m="' + k + '">' + MOTIVOS[k][0] + ' ' + MOTIVOS[k][1] + (k === 'otro_medio' ? '<small>pide una línea de comentario</small>' : '') + '</div>').join('') +
+    '<div class="o cancelar" tabindex="0" data-m="">Cancelar</div>';
+  document.body.appendChild(m);
+  if (window.innerWidth > 600) {
+    const r = btn.getBoundingClientRect(), w = m.offsetWidth, h = m.offsetHeight;
+    let left = Math.min(Math.max(8, r.right - w), window.innerWidth - w - 8);
+    let top = r.bottom + 6; if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+    m.style.left = left + 'px'; m.style.top = top + 'px';
+  }
+  const elegir = (k) => {
+    if (!k) { cerrarMenu(); return; }
+    if (k === 'otro_medio') {
+      m.innerHTML = '<div class="t"><b>' + esc(info.nombre) + '</b> · ✉️ Ya se envió por otro medio</div><div class="cm"><input id="aclTxt" type="text" maxlength="200" placeholder="Ej. se mandó la factura por correo" autocomplete="off"><div class="err" id="aclErr"></div><button class="btn" id="aclOk" type="button">Guardar</button></div>';
+      const ok = () => { const tx = $('aclTxt').value.trim(); if (tx.length < 3) { $('aclErr').textContent = 'Escribe una línea corta (mínimo 3 letras).'; return; } guardarAclaracion(info, 'otro_medio', tx); };
+      $('aclOk').addEventListener('click', ok);
+      $('aclTxt').addEventListener('keydown', (e) => { if (e.key === 'Enter') ok(); });
+      $('aclTxt').focus();
+      return;
+    }
+    guardarAclaracion(info, k, '');
+  };
+  m.querySelectorAll('.o').forEach(o => {
+    o.addEventListener('click', () => elegir(o.dataset.m));
+    o.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); elegir(o.dataset.m); } });
+  });
+}
+async function guardarAclaracion(info, motivo, comentario) {
+  const datos = { conversacionId: info.id, nombre: info.nombre, telefono: info.tel, seccion: info.sec, motivo: motivo, comentario: comentario || '', por: usuario.email, porNombre: usuario.displayName || '', tsIso: new Date().toISOString(), fechaMsg: info.f, activa: true, reporte: actual ? actual.id : '' };
+  cerrarMenu();
+  try {
+    await setDoc(doc(db, COL_ACL, info.id), Object.assign({ ts: serverTimestamp() }, datos));
+  } catch (e) { aviso('No se pudo guardar (' + (e.code || 'error') + '). Intenta de nuevo o avisa a Carlos.'); return; }
+  aclar[info.id] = datos;
+  registrar('aclarar', { motivo: motivo, seccion: info.sec });
+  repintar();
+  aviso('Listo: ' + info.nombre + ' pasó a «Aclaradas».');
+}
+
+// ---------- Proveedores marcados (solo Carlos): para ponerles la etiqueta en GHL ----------
+async function pintarProveedores() {
+  $('tituloReporte').textContent = '🚫 Proveedores marcados';
+  $('subReporte').textContent = 'Contactos que un asesor marcó como proveedor o no cliente · solo lo ves tú';
+  $('contenido').innerHTML = '<div class="plano">Cargando…</div>';
+  await cargarAclaraciones();
+  if (!aclOK) { $('contenido').innerHTML = '<div class="plano">No se pudo leer la lista de aclaraciones. Falta aplicar las reglas de Firebase.</div>'; return; }
+  const lista = Object.keys(aclar).map(id => Object.assign({ _id: id }, aclar[id])).filter(a => a.motivo === 'proveedor' && a.activa !== false)
+    .sort((x, y) => String(y.tsIso || '') < String(x.tsIso || '') ? -1 : 1);
+  let h = '<div class="card"><div class="pad"><div class="ayuda">Aquí aparecen los contactos que un asesor marcó como «Proveedor / no es cliente». Ponles la etiqueta <b>no cliente</b> en GoHighLevel para que dejen de salir en los reportes. Marca la casilla cuando ya la tengan, solo para que lleves el control.</div>';
+  h += '<table class="uso"><thead><tr><th>Contacto</th><th>Teléfono</th><th>Lo marcó</th><th>Etiqueta en GHL</th></tr></thead><tbody>';
+  lista.forEach(a => {
+    const tel = String(a.telefono || '').replace(/\D/g, '');
+    h += '<tr><td><b>' + esc(a.nombre || '') + '</b></td><td>' + (tel.length >= 10 ? '<a href="https://wa.me/' + (tel.length === 10 ? '52' + tel : (tel.indexOf('521') === 0 && tel.length === 13 ? '52' + tel.slice(3) : tel)) + '" target="_blank" rel="noopener">' + esc(a.telefono || '') + ' 💬</a>' : esc(a.telefono || '')) + '</td><td>' + esc(quien(a)) + '<br><span style="color:#64748b;font-size:12px">' + esc(horaCorta(a.tsIso)) + '</span></td>' +
+      '<td><label style="cursor:pointer"><input type="checkbox" data-etq="' + esc(a._id) + '"' + (a.etiquetado === true ? ' checked' : '') + '> ya la puse</label></td></tr>';
+  });
+  if (!lista.length) h += '<tr><td colspan="4" style="color:#64748b">Todavía nadie ha marcado un proveedor.</td></tr>';
+  h += '</tbody></table></div></div>';
+  $('contenido').innerHTML = h;
+  $('contenido').querySelectorAll('input[data-etq]').forEach(c => c.addEventListener('change', async () => {
+    try { await updateDoc(doc(db, COL_ACL, c.dataset.etq), { etiquetado: c.checked, etiquetadoPor: usuario.email }); aclar[c.dataset.etq].etiquetado = c.checked; }
+    catch (e) { c.checked = !c.checked; aviso('No se pudo guardar (' + (e.code || 'error') + ').'); }
+  }));
+}
 
 // ---------- Vista de uso (solo Carlos) ----------
 async function pintarUso() {
