@@ -132,7 +132,9 @@ const firebaseConfig = {
 };
 const COL_REPORTE = 'pendientes_reporte_prueba';   // pendientes_reporte_prueba mientras se prueba; pendientes_reporte en producción
 const COL_USO = 'uso_pendientes_prueba';           // uso_pendientes_prueba mientras se prueba; uso_pendientes en producción
-const ADMIN = 'carlos.mtz@highprecisionsupply.com';
+const ADMINES = ['carlos.mtz@expresscarecuu.com', 'carlos.mtz@highprecisionsupply.com'];   // cuentas maestras
+const ADMIN = ADMINES[0];
+const esCuentaAdmin = (m) => ADMINES.indexOf(String(m || '').toLowerCase()) >= 0;
 const COL_USUARIOS = 'usuarios_pendientes';        // lista de personas autorizadas (solo Carlos la administra)
 // ================================================================================
 
@@ -147,7 +149,7 @@ const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</
 // Acceso: Carlos siempre; los demás solo si su correo está en la lista y está activo.
 async function tieneAcceso(u) {
   const mail = String(u.email || '').toLowerCase();
-  if (mail === ADMIN) return true;
+  if (esCuentaAdmin(mail)) return true;
   if (!u.emailVerified) return false;
   try { const sn = await getDoc(doc(db, COL_USUARIOS, mail)); return sn.exists() && sn.data().activo === true; }
   catch (e) { return false; }
@@ -184,7 +186,7 @@ onAuthStateChanged(auth, async (u) => {
     $('loginMsg').textContent = 'La cuenta ' + u.email + ' no está dada de alta en esta página. Pídele a Carlos que te agregue.';
     await signOut(auth); return;
   }
-  usuario = u; esAdmin = u.email.toLowerCase() === ADMIN;
+  usuario = u; esAdmin = esCuentaAdmin(u.email);
   $('login').hidden = true; $('app').hidden = false;
   $('quien').textContent = u.email;
   await cargar();
@@ -365,7 +367,7 @@ async function pintarUsuarios(aviso) {
       '<td style="white-space:nowrap"><button class="mini" data-acc="alt" data-id="' + esc(u._id) + '" data-act="' + (act ? '1' : '0') + '">' + (act ? 'Desactivar' : 'Activar') + '</button> <button class="mini peligro" data-acc="del" data-id="' + esc(u._id) + '">Quitar</button></td></tr>';
   });
   if (!lista.length) h += '<tr><td colspan="4" style="color:#8B8D8D">Todavía no hay personas en la lista. Solo tú puedes entrar.</td></tr>';
-  h += '</tbody></table><div class="ayuda" style="margin-top:10px">Tu cuenta (' + esc(ADMIN) + ') siempre tiene acceso y no necesita estar en la lista. Quien no esté aquí, o esté desactivado, no puede ver nada.</div></div></div>';
+  h += '</tbody></table><div class="ayuda" style="margin-top:10px">Tus cuentas maestras (' + ADMINES.map(esc).join(' y ') + ') siempre tienen acceso y no necesitan estar en la lista. Quien no esté aquí, o esté desactivado, no puede ver nada.</div></div></div>';
   $('contenido').innerHTML = h;
   $('usrAgregar').addEventListener('click', async () => {
     const correo = $('usrCorreo').value.trim().toLowerCase(), nombre = $('usrNombre').value.trim();
