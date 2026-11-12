@@ -78,6 +78,13 @@
   .cab [data-ir]:active{transform:translateY(0)}
   .cab [data-ir-vacio]{opacity:.55}
   .pista{padding:0 24px 12px;font-size:12px;color:var(--val-dark-gray);text-align:center}
+/* El reporte de la tarde trae los recuadros en tabla: se ven igual que las tarjetas de la mañana */
+  .cab > table{display:block;width:100%;border-collapse:separate;background:#f8fafc}
+  .cab > table > tbody{display:block}
+  .cab > table tr{display:flex;gap:12px;padding:20px 24px 8px;background:#f8fafc}
+  .cab > table td{flex:1;display:block;width:auto!important;background:#fff;border-radius:8px;padding:16px!important;text-align:center;border:1px solid #e2e8f0}
+  .cab > table td > div:nth-child(2){font-size:12px!important;color:#64748b!important;margin-top:4px}
+  @media(max-width:600px){.cab > table tr{flex-wrap:wrap;padding:16px 12px 8px}.cab > table td{flex:1 1 30%}}
   details.sec.flash{animation:flash 1.4s ease-out}
   @keyframes flash{0%{box-shadow:0 0 0 3px var(--val-light-blue)}100%{box-shadow:0 1px 4px rgba(0,0,0,.08)}}
   #arriba{position:fixed;right:16px;bottom:18px;width:44px;height:44px;border-radius:50%;border:none;background:var(--val-dark-blue);color:#fff;font-size:20px;font-weight:700;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);display:none;z-index:120}
