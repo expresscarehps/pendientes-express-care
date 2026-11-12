@@ -313,7 +313,7 @@ function activarTarjetas() {
   const cab = document.querySelector('#contenido .cab');
   if (!cab) return;
   let n = 0;
-  cab.querySelectorAll('div').forEach(card => {
+  cab.querySelectorAll('td, div').forEach(card => {
     if (card.children.length !== 2) return;
     const num = card.children[0], lab = card.children[1];
     if (num.children.length || lab.children.length || !/^\d+$/.test(num.textContent.trim())) return;
@@ -390,7 +390,7 @@ const quien = (a) => a.porNombre || String(a.por || '').split('@')[0];
 // Las cifras de los recuadros de arriba bajan cuando una conversación se aclara.
 function bajarCaja(rxs, n) {
   const cab = document.querySelector('#contenido .cab'); if (!cab || !n) return;
-  cab.querySelectorAll('div').forEach(card => {
+  cab.querySelectorAll('td, div').forEach(card => {
     if (card.children.length !== 2) return;
     const num = card.children[0], lab = card.children[1];
     if (num.children.length || lab.children.length || !/^\d+$/.test(num.textContent.trim())) return;
