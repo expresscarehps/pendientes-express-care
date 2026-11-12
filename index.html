@@ -301,7 +301,7 @@ function ajustarAlturas() {
 }
 window.addEventListener('resize', ajustarAlturas);
 // Los recuadros de arriba (sin atender, seguimiento, etc.) se vuelven botones que abren y llevan a su lista.
-const MAPA_TARJETAS = [[/Fuera de horario/i, 'sec-fh'], [/Sin atender/i, 'sec-sin'], [/Seguimiento/i, 'sec-seg'], [/Esperando/i, 'sec-esp'], [/Clics? de anuncio/i, 'sec-clic']];
+const MAPA_TARJETAS = [[/Atendidas hoy/i, 'sec-ok'], [/Nuevas de hoy/i, 'sec-sin-hoy'], [/Siguen de días anteriores/i, '*anteriores'], [/Fuera de horario/i, 'sec-fh'], [/Sin atender/i, 'sec-sin'], [/Seguimiento/i, 'sec-seg'], [/Esperando/i, 'sec-esp'], [/Clics? de anuncio/i, 'sec-clic']];
 function irASeccion(id) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -319,12 +319,14 @@ function activarTarjetas() {
     if (num.children.length || lab.children.length || !/^\d+$/.test(num.textContent.trim())) return;
     const m = MAPA_TARJETAS.find(x => x[0].test(lab.textContent));
     if (!m) return;
-    const existe = !!document.getElementById(m[1]);
-    card.setAttribute('data-ir', m[1]);
+    let destino = m[1];
+    if (destino === '*anteriores') { const d0 = document.querySelector('#contenido details.sec[id^="sec-sin-"]:not(#sec-sin-hoy)'); destino = d0 ? d0.id : 'sec-sin-anteriores'; }
+    const existe = !!document.getElementById(destino);
+    card.setAttribute('data-ir', destino);
     card.setAttribute('role', 'button'); card.setAttribute('tabindex', '0');
     if (!existe) { card.setAttribute('data-ir-vacio', '1'); card.title = 'No hay conversaciones en esta lista'; return; }
     card.title = 'Ir a esta lista';
-    const ir = () => { irASeccion(m[1]); registrar('tarjeta', { seccion: m[1] }); };
+    const ir = () => { irASeccion(destino); registrar('tarjeta', { seccion: destino }); };
     card.addEventListener('click', ir);
     card.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ir(); } });
     n++;
