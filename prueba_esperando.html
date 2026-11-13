@@ -394,7 +394,7 @@ const MOTIVOS = {
   atendiendo: ['🔧', 'Lo estoy atendiendo ahora']
 };
 let aclar = {}, aclOK = false, filasAcl = {};
-const SEC_ACL = (id) => id === 'sec-fh' || id.indexOf('sec-sin') === 0 || id === 'sec-seg';
+const SEC_ACL = (id) => id === 'sec-fh' || id.indexOf('sec-sin') === 0 || id === 'sec-seg' || id === 'sec-esp';
 async function cargarAclaraciones() {
   try {
     const sn = await getDocs(collection(db, COL_ACL));
@@ -431,6 +431,7 @@ function bajarCaja(rxs, n) {
 function rxCajas(secId) {
   if (secId === 'sec-fh') return [/Fuera de horario/i];
   if (secId === 'sec-seg') return [/Seguimiento/i];
+  if (secId === 'sec-esp') return [/Esperando/i];
   if (secId === 'sec-sin-hoy') return [/Nuevas de hoy/i];
   return [/Siguen de días anteriores/i, /Sin atender en horario/i];
 }
@@ -488,7 +489,7 @@ function pintarAclaradas() {
   sec.className = 'sec'; sec.id = 'sec-aclaradas';
   sec.innerHTML = '<summary><span>✔ Aclaradas (' + lista.length + ')</span></summary><div class="cuerpo"><div class="ayuda">Conversaciones que un asesor marcó como resueltas. Ya no cuentan en las listas ni en el correo. Si el cliente vuelve a escribir, reaparecen solas. Si fue sin querer, toca «Deshacer» (volverá a salir en el siguiente reporte).</div><div class="tw"><table style="min-width:560px"><thead><tr><th style="padding:8px 14px;text-align:left">Cliente</th><th style="padding:8px 14px;text-align:left">Motivo</th><th style="padding:8px 14px;text-align:left">Quién y cuándo</th><th></th></tr></thead><tbody>' + filas + '</tbody></table></div></div>';
   const cont = $('contenido');
-  const pend = Array.from(cont.querySelectorAll('details.sec')).filter(d => SEC_ACL(d.id));
+  const pend = Array.from(cont.querySelectorAll('details.sec')).filter(d => SEC_ACL(d.id) && d.id !== 'sec-esp');
   const ancla = pend.length ? pend[pend.length - 1] : cont.querySelector('.cab');
   if (ancla) ancla.insertAdjacentElement('afterend', sec); else cont.appendChild(sec);
   sec.querySelectorAll('button[data-deshacer]').forEach(b => b.addEventListener('click', async () => {
@@ -498,6 +499,7 @@ function pintarAclaradas() {
   }));
 }
 function repintar() {
+  if (vistaEsp) { const y0 = window.scrollY; pintarEsperando(); window.scrollTo(0, y0); return; }
   const y = window.scrollY, abiertas = {};
   $('contenido').querySelectorAll('details.sec').forEach(d => { abiertas[d.id] = d.open; });
   pintar(true);
@@ -512,7 +514,7 @@ function abrirMenu(btn, id) {
   const velo = document.createElement('div'); velo.id = 'aclVelo'; velo.addEventListener('click', cerrarMenu); document.body.appendChild(velo);
   const m = document.createElement('div'); m.id = 'aclMenu'; m.setAttribute('role', 'dialog');
   m.innerHTML = '<div class="t">¿Qué pasó con esta conversación?<br><b>' + esc(info.nombre) + '</b> · ' + esc(info.tel) + '</div>' +
-    Object.keys(MOTIVOS).map(k => '<div class="o" tabindex="0" data-m="' + k + '">' + MOTIVOS[k][0] + ' ' + MOTIVOS[k][1] + (k === 'otro_medio' ? '<small>pide una línea de comentario</small>' : '') + '</div>').join('') +
+    Object.keys(MOTIVOS).filter(k => !(info.sec === 'sec-esp' && k === 'espera_cliente')).map(k => '<div class="o" tabindex="0" data-m="' + k + '">' + MOTIVOS[k][0] + ' ' + MOTIVOS[k][1] + (k === 'otro_medio' ? '<small>pide una línea de comentario</small>' : '') + '</div>').join('') +
     '<div class="o cancelar" tabindex="0" data-m="">Cancelar</div>';
   document.body.appendChild(m);
   if (window.innerWidth > 600) {
@@ -590,14 +592,29 @@ function waLink(tel, txt) {
   if (t.length < 10) return esc(txt || tel || '');
   return '<a href="https://wa.me/' + (t.length === 10 ? '52' + t : (t.indexOf('521') === 0 && t.length === 13 ? '52' + t.slice(3) : t)) + '" target="_blank" rel="noopener">' + esc(txt || tel) + ' 💬</a>';
 }
+let espFiltro = { t: '', m: '' };
+// Quita las aclaradas (que el cliente no haya vuelto a escribir) y vuelve a sacar los conteos.
+function resumenSinAclaradas(R) {
+  const casos = (R.casos || []).filter(x => { const v = aclOK ? aclaracionVigente(x.id, x.ref || x.fecha) : null; return !(v && !v.volvio); });
+  const n = casos.length;
+  const pct = k => n ? Math.round(k * 1000 / n) / 10 : 0;
+  const temas = R.temas.map(t => {
+    const c = casos.filter(x => x.tema === t.id), dd = c.map(x => x.dias).filter(x => x != null);
+    const motivos = {}; Object.keys(t.motivos || {}).forEach(m => { motivos[m] = c.filter(x => x.motivo === m).length; });
+    return Object.assign({}, t, { n: c.length, pct: pct(c.length), anuncio: c.filter(x => x.anuncio).length, motivos: motivos, diasProm: dd.length ? Math.round(dd.reduce((a, b) => a + b, 0) / dd.length * 10) / 10 : null });
+  }).filter(t => t.n > 0).sort((a, b) => b.n - a.n);
+  const motivos = R.motivos.map(m => { const k = casos.filter(x => x.motivo === m.id).length; return Object.assign({}, m, { n: k, pct: pct(k) }); }).filter(m => m.n > 0).sort((a, b) => b.n - a.n);
+  return Object.assign({}, R, { total: n, casos: casos, temas: temas, motivos: motivos, aclaradas: (R.casos || []).length - n });
+}
 function pintarEsperando() {
   const r = reportes.find(x => x.esperaResumen);
   $('tituloReporte').textContent = '⏳ Esperando al cliente: resumen por tema';
   if (!r) { $('contenido').innerHTML = '<div class="plano">Todavía no hay resumen por tema.</div>'; return; }
   let R = null;
   try { R = JSON.parse(r.esperaResumen); } catch (e) {}
+  if (R) R = resumenSinAclaradas(R);
   if (!R || !R.total) { $('contenido').innerHTML = '<div class="plano">No hubo casos esperando al cliente en ese reporte.</div>'; return; }
-  $('subReporte').textContent = 'Del reporte del ' + fmtFecha(r.fecha) + ' (' + (r.tipo === 'am' ? 'mañana' : 'tarde') + ') · ' + R.total + ' casos';
+  $('subReporte').textContent = 'Del reporte del ' + fmtFecha(r.fecha) + ' (' + (r.tipo === 'am' ? 'mañana' : 'tarde') + ') · ' + R.total + ' casos' + (R.aclaradas ? ' · ' + R.aclaradas + ' aclarados no cuentan' : '');
   const maxT = Math.max.apply(null, R.temas.map(t => t.n));
   const maxM = Math.max.apply(null, R.motivos.map(m => m.n));
   const barra = (attr, id, nom, n, pct, max, rojo, extra) => '<div class="barra" ' + attr + '="' + esc(id) + '"><span class="nom">' + esc(nom) + (extra || '') + '</span><div class="pista"><div class="rell' + (rojo ? ' rojo' : '') + '" style="width:' + Math.max(2, Math.round(n * 100 / max)) + '%"></div></div><span class="num">' + n + ' <small>' + pct + '%</small></span></div>';
@@ -621,18 +638,22 @@ function pintarEsperando() {
   h += '<details class="sec" id="esp-lista" open><summary><span>Casos (<span id="espN">' + R.total + '</span>)</span></summary><div class="cuerpo">' +
     '<div class="esp-filtros"><select id="espTema"><option value="">Todos los temas</option>' + R.temas.map(t => '<option value="' + esc(t.id) + '">' + esc(t.nombre) + ' (' + t.n + ')</option>').join('') + '</select>' +
     '<select id="espMot"><option value="">Todos los motivos</option>' + R.motivos.map(m => '<option value="' + esc(m.id) + '">' + esc(MOT_CORTO[m.id] || m.nombre) + ' (' + m.n + ')</option>').join('') + '</select></div>' +
-    '<div class="tw"><table class="uso" style="min-width:640px"><thead><tr><th>Cliente</th><th>Qué pidió</th><th>Qué falta</th><th>Días</th></tr></thead><tbody id="espCuerpo"></tbody></table></div></div></details>';
+    '<div class="tw"><table class="uso" style="min-width:640px"><thead><tr><th>Cliente</th><th>Qué pidió</th><th>Qué falta</th><th>Días</th><th></th></tr></thead><tbody id="espCuerpo"></tbody></table></div></div></details>';
   h += '<div class="plano">Calculado ' + fmtCreado(R.calculado) + ' · clasificación por palabras clave. Si un caso quedó en el tema equivocado, avísale a Carlos para afinar las reglas.</div>';
   $('contenido').innerHTML = h;
   const temaNom = {}; R.temas.forEach(t => { temaNom[t.id] = t.nombre; });
   function lista() {
-    const ft = $('espTema').value, fm = $('espMot').value;
+    const ft = $('espTema').value, fm = $('espMot').value; espFiltro = { t: ft, m: fm };
     const c = (R.casos || []).filter(x => (!ft || x.tema === ft) && (!fm || x.motivo === fm));
     $('espN').textContent = c.length;
     $('espCuerpo').innerHTML = c.map(x => '<tr><td><b>' + esc(x.nombre) + '</b><br>' + waLink(x.telefono, x.telefono) + '</td><td>' + esc(x.pidio) +
-      '<br><span style="color:#64748b;font-size:11px">' + esc(temaNom[x.tema] || '') + ' · ' + esc(MOT_CORTO[x.motivo] || '') + (x.anuncio ? ' · por anuncio' : '') + '</span></td><td style="font-size:12px;color:#475569">' + esc(x.falta) + '</td><td>' + (x.dias == null ? '' : x.dias) + '</td></tr>').join('') ||
-      '<tr><td colspan="4" style="color:#64748b">No hay casos con ese filtro.</td></tr>';
+      '<br><span style="color:#64748b;font-size:11px">' + esc(temaNom[x.tema] || '') + ' · ' + esc(MOT_CORTO[x.motivo] || '') + (x.anuncio ? ' · por anuncio' : '') + '</span></td><td style="font-size:12px;color:#475569">' + esc(x.falta) + '</td><td>' + (x.dias == null ? '' : x.dias) + '</td><td class="acl-td">' + (aclOK ? '<button class="acl-btn" type="button" data-acl="' + esc(x.id) + '" title="Aclarar esta conversación" aria-label="Aclarar esta conversación">⋯</button>' : '') + '</td></tr>').join('') ||
+      '<tr><td colspan="5" style="color:#64748b">No hay casos con ese filtro.</td></tr>';
+    $('espCuerpo').querySelectorAll('button[data-acl]').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); abrirMenu(ev.currentTarget, b.dataset.acl); }));
   }
+  filasAcl = {}; (R.casos || []).forEach(x => { filasAcl[x.id] = { id: x.id, nombre: x.nombre || '', tel: x.telefono || '', sec: 'sec-esp', f: x.ref || x.fecha || '' }; });
+  if (espFiltro.t && R.temas.some(t => t.id === espFiltro.t)) $('espTema').value = espFiltro.t;
+  if (espFiltro.m && R.motivos.some(m => m.id === espFiltro.m)) $('espMot').value = espFiltro.m;
   $('espTema').addEventListener('change', lista); $('espMot').addEventListener('change', lista);
   $('contenido').querySelectorAll('.barra').forEach(b => b.addEventListener('click', () => {
     if (b.dataset.tema !== undefined) { $('espTema').value = b.dataset.tema; $('espMot').value = ''; }
