@@ -132,6 +132,7 @@
   #aclMenu .cm .btn{margin-top:8px}
   #aclMenu .cm .err{color:var(--val-red);font-size:12px;min-height:16px;margin-top:4px}
   #aclAviso{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:210;background:#1a1a1a;color:#fff;padding:10px 16px;border-radius:8px;font-size:13px;max-width:92vw;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .anu{display:inline-block;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom;margin-left:6px;background:#eef2ff;color:#3730a3;border-radius:5px;padding:1px 6px;font-size:11px;font-weight:600}
   .acl-tag{display:inline-block;background:#ecfdf5;color:#065f46;border-radius:5px;padding:3px 8px;font-size:12px;font-weight:600}
   @media(max-width:600px){
     #aclVelo{background:rgba(0,0,0,.35)}
@@ -606,12 +607,35 @@ function resumenSinAclaradas(R) {
   const motivos = R.motivos.map(m => { const k = casos.filter(x => x.motivo === m.id).length; return Object.assign({}, m, { n: k, pct: pct(k) }); }).filter(m => m.n > 0).sort((a, b) => b.n - a.n);
   return Object.assign({}, R, { total: n, casos: casos, temas: temas, motivos: motivos, aclaradas: (R.casos || []).length - n });
 }
+// ---- Etiqueta «📣 anuncio» (opción A): sale del atributo data-a de cada fila; se pone junto al teléfono, recortada a una línea ----
+function pintarAnuncios() {
+  const c = $('contenido'); if (!c) return;
+  c.querySelectorAll('tr[data-a]:not([data-anu])').forEach(tr => {
+    tr.dataset.anu = '1';
+    const a = tr.dataset.a; if (!a) return;
+    const td = tr.querySelector('td'); if (!td) return;
+    td.insertAdjacentHTML('beforeend', '<span class="anu" title="Llegó por el anuncio: ' + esc(a) + '">📣 ' + esc(a) + '</span>');
+  });
+}
+try { new MutationObserver(pintarAnuncios).observe($('contenido'), { childList: true, subtree: true }); } catch (e) {}
+// id de conversación -> título del anuncio, leído de las filas guardadas del reporte (para la pestaña «Esperando: por tema»)
+function anunciosDe(r) {
+  const m = {};
+  try {
+    JSON.parse(r.datos || '[]').forEach(sec => (sec.rows || []).forEach(row => {
+      const x = /^<tr data-a="([^"]*)" data-id="([^"]*)"/.exec(row);
+      if (x) { const d = document.createElement('textarea'); d.innerHTML = x[1] + '\u0001' + x[2]; const p = d.value.split('\u0001'); m[p[1]] = p[0]; }
+    }));
+  } catch (e) {}
+  return m;
+}
 function pintarEsperando() {
   const r = reportes.find(x => x.esperaResumen);
   $('tituloReporte').textContent = '⏳ Esperando al cliente: resumen por tema';
   if (!r) { $('contenido').innerHTML = '<div class="plano">Todavía no hay resumen por tema.</div>'; return; }
   let R = null;
   try { R = JSON.parse(r.esperaResumen); } catch (e) {}
+  const AN = r ? anunciosDe(r) : {};
   if (R) R = resumenSinAclaradas(R);
   if (!R || !R.total) { $('contenido').innerHTML = '<div class="plano">No hubo casos esperando al cliente en ese reporte.</div>'; return; }
   $('subReporte').textContent = 'Del reporte del ' + fmtFecha(r.fecha) + ' (' + (r.tipo === 'am' ? 'mañana' : 'tarde') + ') · ' + R.total + ' casos' + (R.aclaradas ? ' · ' + R.aclaradas + ' aclarados no cuentan' : '');
@@ -647,7 +671,7 @@ function pintarEsperando() {
     const c = (R.casos || []).filter(x => (!ft || x.tema === ft) && (!fm || x.motivo === fm));
     $('espN').textContent = c.length;
     $('espCuerpo').innerHTML = c.map(x => '<tr><td><b>' + esc(x.nombre) + '</b><br>' + waLink(x.telefono, x.telefono) + '</td><td>' + esc(x.pidio) +
-      '<br><span style="color:#64748b;font-size:11px">' + esc(temaNom[x.tema] || '') + ' · ' + esc(MOT_CORTO[x.motivo] || '') + (x.anuncio ? ' · por anuncio' : '') + '</span></td><td style="font-size:12px;color:#475569">' + esc(x.falta) + '</td><td>' + (x.dias == null ? '' : x.dias) + '</td><td class="acl-td">' + (aclOK ? '<button class="acl-btn" type="button" data-acl="' + esc(x.id) + '" title="Aclarar esta conversación" aria-label="Aclarar esta conversación">⋯</button>' : '') + '</td></tr>').join('') ||
+      '<br><span style="color:#64748b;font-size:11px">' + esc(temaNom[x.tema] || '') + ' · ' + esc(MOT_CORTO[x.motivo] || '') + (AN[x.id] ? ' · <span class="anu" title="Llegó por el anuncio: ' + esc(AN[x.id]) + '">📣 ' + esc(AN[x.id]) + '</span>' : (x.anuncio ? ' · por anuncio' : '')) + '</span></td><td style="font-size:12px;color:#475569">' + esc(x.falta) + '</td><td>' + (x.dias == null ? '' : x.dias) + '</td><td class="acl-td">' + (aclOK ? '<button class="acl-btn" type="button" data-acl="' + esc(x.id) + '" title="Aclarar esta conversación" aria-label="Aclarar esta conversación">⋯</button>' : '') + '</td></tr>').join('') ||
       '<tr><td colspan="5" style="color:#64748b">No hay casos con ese filtro.</td></tr>';
     $('espCuerpo').querySelectorAll('button[data-acl]').forEach(b => b.addEventListener('click', (ev) => { ev.stopPropagation(); abrirMenu(ev.currentTarget, b.dataset.acl); }));
   }
