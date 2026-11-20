@@ -666,8 +666,25 @@ function pintarEsperando() {
   h += '<div class="plano">Calculado ' + fmtCreado(R.calculado) + ' · clasificación por palabras clave. Si un caso quedó en el tema equivocado, avísale a Carlos para afinar las reglas.</div>';
   $('contenido').innerHTML = h;
   const temaNom = {}; R.temas.forEach(t => { temaNom[t.id] = t.nombre; });
+  // Los números de cada lista cuentan solo lo que cabe con lo que ya se eligió en la otra; las opciones sin casos quedan en gris y no se pueden elegir.
+  function opciones(ft, fm) {
+    const casos = R.casos || [];
+    const nT = casos.filter(x => !fm || x.motivo === fm).length, nM = casos.filter(x => !ft || x.tema === ft).length;
+    const selT = $('espTema'), selM = $('espMot');
+    Array.from(selT.options).forEach(o => {
+      if (!o.value) { o.textContent = 'Todos los temas (' + nT + ')'; return; }
+      const n = casos.filter(x => x.tema === o.value && (!fm || x.motivo === fm)).length;
+      o.textContent = (temaNom[o.value] || o.value) + ' (' + n + ')'; o.disabled = n === 0 && o.value !== ft;
+    });
+    Array.from(selM.options).forEach(o => {
+      if (!o.value) { o.textContent = 'Todos los motivos (' + nM + ')'; return; }
+      const n = casos.filter(x => x.motivo === o.value && (!ft || x.tema === ft)).length;
+      o.textContent = (MOT_CORTO[o.value] || o.value) + ' (' + n + ')'; o.disabled = n === 0 && o.value !== fm;
+    });
+  }
   function lista() {
     const ft = $('espTema').value, fm = $('espMot').value; espFiltro = { t: ft, m: fm };
+    opciones(ft, fm);
     const c = (R.casos || []).filter(x => (!ft || x.tema === ft) && (!fm || x.motivo === fm));
     $('espN').textContent = c.length;
     $('espCuerpo').innerHTML = c.map(x => '<tr><td><b>' + esc(x.nombre) + '</b><br>' + waLink(x.telefono, x.telefono) + '</td><td>' + esc(x.pidio) +
